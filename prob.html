@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="uk">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Розв'язувач гри "8-ми пазлів"</title>
+    <link rel="stylesheet" href="./Cursuch1.css">
+    <style>
+        html {
+            background-color: rgb(30, 29, 32);
+            padding: 0;
+            margin: 0;
+            box-sizing: border-box;
+            /*допомагає точніше контролювати розміри елементів на сторінці. */
+        }
+
+        .name,
+        .RBFS,
+        .az {
+            color: rgb(47, 46, 122);
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .repeat,
+        .out {
+            margin: 0 0 80px 0;
+            color: aliceblue;
+            background-color: rgb(75, 82, 80);
+            font-size: 2em;
+            width: 20vw;
+            height: 5vw;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 10px;
+            text-decoration: none;
+        }
+
+        *,
+        /*селектор для всіх елементів на сторінці.*/
+        *:before,
+        *:after {
+            box-sizing: inherit;
+        }
+
+        /*всі елементи на сторінці використовують однакову модель коробки*/
+        body {
+            padding: 0;
+            /*Усі внутрішні відступи встановлені на 0 пікселів*/
+            margin: 0;
+            height: 100%;
+        }
+
+
+        /* 
+        .view-screen {
+            width: 100%;
+            height: 100%;
+            border: 1px solid #444444;
+        } */
+
+        .eight-puzzle {
+            margin: 0;
+            width: 272px;
+            height: 272px;
+            border: 2px solid #444444;
+            padding: 5px;
+            margin: 14px 0 0 14px;
+        }
+
+        .eight-puzzle ul {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+            /*маркери забрало*/
+            font-size: 0;
+        }
+
+        .eight-puzzle li {
+            display: inline-block;
+            margin: 5px;
+            width: 76px;
+            height: 76px;
+            border: 2px solid #444444;
+            line-height: 76px;
+            font-size: 40px;
+            text-align: center;
+        }
+
+        .eight-puzzle li.incorrect {
+            background-color: #333333;
+            color: #ff0000;
+        }
+
+        .eight-puzzle li.correct {
+            background-color: #333333;
+            color: #00ff00;
+        }
+
+        .solution-steps {
+            position: absolute;
+            top: 20px;
+            left: 400px;
+            color: white;
+            max-width: 400px;
+            white-space: pre-line;
+            margin-top: 10px;
+        }
+
+        .download-btn {
+            display: block;
+            width: max-content;
+            padding: 20px;
+            margin-top: 40px;
+            color: white;
+            border-radius: 10px;
+            border: 1px solid white;
+            text-decoration: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="view-screen">
+        <div class="eight-puzzle"></div>
+        <button id="a-star-button">Рішення A*</button>
+        <button id="rbfs-button">Рішення RBFS</button>
+        <button id="random-button">Випадковий стан</button>
+    </div>
+    <div class="solution-steps"></div>
+    <div class="solution-info">
+        <p class="solution-time"></p>
+        <p class="solution-nodes"></p>
+    </div>
+    <script src="https://unpkg.com/js-priority-queue@latest"></script><!-- потрібен для вирішення алгоритму А* -->
+    <div>
+        <input type="text" id="new-numbers-input" placeholder="Введіть нові числа">
+        <button id="submit-new-numbers">Підтвердити</button>
+    </div>
+    <script>
+        window.onload = function () {
+            var tiles = [];
+            var initialTiles = [];
+
+            function checkForUniqueNumbers(input) {
+                const uniqueNumbers = new Set(input.split('').map(Number));
+                return uniqueNumbers.size === 9;
+            }
+
+            function saveState() {
+                localStorage.setItem('eightPuzzleState', JSON.stringify(tiles));
+                console.log('State saved:', tiles);
+            }
+
+            function loadState() {
+                const savedState = localStorage.getItem('eightPuzzleState');
+                if (savedState) {
+                    tiles = JSON.parse(savedState);
+                    initialTiles = [...tiles];
+                    console.log('State loaded:', tiles);
+                } else {
+                    populateTiles();
+                }
+                renderTiles();
+            }
+
+            document.getElementById("submit-new-numbers").addEventListener("click", function () {
+                const newNumbersInput = document.getElementById("new-numbers-input").value;
+                if (newNumbersInput.length !== 9 || !checkForUniqueNumbers(newNumbersInput)) {
+                    alert("Будь ласка, введіть 9 унікальних чисел від 0 до 8.");
+                    return;
+                }
+
+                tiles = newNumbersInput.split('').map(Number);
+                initialTiles = [...tiles];
+                saveState();
+                renderTiles();
+            });
+
+            function renderTiles() {
+                const puzzleContainer = document.querySelector('.eight-puzzle');
+                puzzleContainer.innerHTML = '';
+                tiles.forEach(tile => {
+                    const tileElement = document.createElement('div');
+                    tileElement.textContent = tile === 0 ? '' : tile;
+                    puzzleContainer.appendChild(tileElement);
+                });
+            }
+
+            document.getElementById("random-button").addEventListener("click", function () {
+                tiles = [...initialTiles];
+                for (let i = tiles.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
+                }
+                saveState();
+                renderTiles();
+            });
+
+            document.getElementById("rbfs-button").addEventListener("click", function () {
+                tiles = [...initialTiles];
+                saveState();
+                renderTiles();
+            });
+
+            loadState();
+
+            var populateTiles = function () {
+                if (tiles.length === 9) {
+                    return;
+                }
+
+                var input = prompt("Введіть 9 чисел для гри, кожне від 0 до 8, без пропусків:");
+
+                if (input.length !== 9 || !checkForUniqueNumbers(input)) {
+                    alert("Будь ласка, введіть 9 унікальних чисел від 0 до 8.");
+                    return populateTiles();
+                }
+
+                tiles = [];
+                for (var i = 0; i < input.length; i++) {
+                    var number = parseInt(input[i]);
+                    if (isNaN(number) || number < 0 || number > 8) {
+                        alert("Некоректне введення. Введіть числа від 0 до 8.");
+                        populateTiles();
+                        return;
+                    }
+                    tiles.push(number);
+                }
+                initialTiles = [...tiles];
+            };
+
+            document.getElementById("submit-new-numbers").addEventListener("click", function () {
+                const newNumbersInput = document.getElementById("new-numbers-input").value;
+                if (newNumbersInput.length !== 9 || !checkForUniqueNumbers(newNumbersInput)) {
+                    alert("Будь ласка, введіть 9 унікальних чисел від 0 до 8.");
+                    return;
+                }
+
+                tiles = [];
+                for (var i = 0; i < newNumbersInput.length; i++) {
+                    var number = parseInt(newNumbersInput[i]);
+                    if (isNaN(number) || number < 0 || number > 8) {
+                        alert("Некоректне введення. Введіть числа від 0 до 8.");
+                        return;
+                    }
+                    tiles.push(number);
+                }
+                initialTiles = [...tiles];
+                renderTiles(target);
+            });
+
+            function isSolvable(tiles) {
+                let inversions = 0;
+                const length = tiles.length;
+                for (let i = 0; i < length - 1; i++) {
+                    for (let j = i + 1; j < length; j++) {
+                        if (tiles[i] > tiles[j] && tiles[i] !== 0 && tiles[j] !== 0) {
+                            inversions++;
+                        }
+                    }
+                }
+
+                const emptyRow = Math.floor(tiles.indexOf(0) / 3) + 1;
+
+                if (3 % 2 === 1) {
+                    return inversions % 2 === 0;
+                } else {
+                    return (
+                        (inversions % 2 === 0 && emptyRow % 2 === 1) ||
+                        (inversions % 2 === 1 && emptyRow % 2 === 2)
+                    );
+                }
+            }
+
+            class Node {
+                constructor(tiles, parent = null, move = null, g = 0) {
+                    this.tiles = tiles;
+                    this.parent = parent;
+                    this.move = move;
+                    this.g = g;
+                    this.h = this.calculateHeuristic();
+                    this.f = this.g + this.h;
+                }
+
+                calculateHeuristic() {
+                    const targetPositions = {
+                        1: [0, 0],
+                        2: [0, 1],
+                        3: [0, 2],
+                        4: [1, 0],
+                        5: [1, 1],
+                        6: [1, 2],
+                        7: [2, 0],
+                        8: [2, 1],
+                        0: [2, 2],
+                    };
+
+                    let manhattanDistance = 0;
+                    let misplacedCount = 0;
+
+                    this.tiles.forEach((tile, index) => {
+                        if (tile === 0) return;
+
+                        const [x, y] = [Math.floor(index / 3), index % 3];
+                        const [targetX, targetY] = targetPositions[tile];
+
+                        manhattanDistance += Math.abs(x - targetX) + Math.abs(y - targetY);
+
+                        if (tile !== (index + 1) % 9) {
+                            misplacedCount++;
+                        }
+                    });
+                    return manhattanDistance + misplacedCount;
+                }
+
+                generateChildren() {
+                    const emptyIndex = this.tiles.indexOf(0);
+                    const [row, col] = [Math.floor(emptyIndex / 3), emptyIndex % 3];
+                    const moves = {
+                        up: [row - 1, col],
+                        down: [row + 1, col],
+                        left: [row, col - 1],
+                        right: [row, col + 1],
+                    };
+
+                    const moveKeys = Object.keys(moves);
+                    moveKeys.sort(() => Math.random() - 0.5);
+
+                    const children = [];
+                    for (const moveKey of moveKeys) {
+                        const [newRow, newCol] = moves[moveKey];
+                        if (newRow >= 0 && newRow < 3 && newCol >= 0 && newCol < 3) {
+                            const newIndex = newRow * 3 + newCol;
+                            const newTiles = [...this.tiles];
+                            [newTiles[emptyIndex], newTiles[newIndex]] = [
+                                newTiles[newIndex],
+                                newTiles[emptyIndex],
+                            ];
+                            children.push(new Node(newTiles, this, moveKey, this.g + 1));
+                        }
+                    }
+                    return children;
+                }
+
+                isGoal() {
+                    const goal = [1, 2, 3, 4, 5, 6, 7, 8, 0];
+                    return this.tiles.every((tile, index) => tile === goal[index]);
+                }
+
+                getPath() {
+                    const path = [];
+                    let currentNode = this;
+                    while (currentNode) {
+                        path.unshift(currentNode);
+                        currentNode = currentNode.parent;
+                    }
+                    return path;
+                }
+            }
+
+            class AStar {
+                constructor() {
+                    this.solutionSteps = [];
+                }
+
+                async search(startTiles) {
+                    const stepsDiv = document.querySelector(".solution-steps");
+                    const timeDiv = document.querySelector(".solution-time");
+                    const nodesDiv = document.querySelector(".solution-nodes");
+                    const target = document.querySelector(".eight-puzzle");
+
+                    const queue = new PriorityQueue({ comparator: (a, b) => a.f - b.f });
+                    const closedSet = new Set();
+                    const startNode = new Node(startTiles);
+                    let nodesVisited = 0;
+                    let timeTaken = 0;
+
+                    queue.queue(startNode);
+
+                    const startTime = performance.now();
+
+                    const processNextStep = () => {
+                        const currentNode = queue.dequeue();
+                        nodesVisited++;
+
+                        if (currentNode.isGoal()) {
+                            const endTime = performance.now();
+                            timeTaken = endTime - startTime;
+                            const path = currentNode.getPath();
+
+                            let step = 0;
+                            const interval = 500;
+
+                            const processStep = () => {
+                                if (step < path.length) {
+                                    const node = path[step];
+                                    this.solutionSteps.push(`Крок ${step}: ${node.tiles.join(" ")}`);
+                                    tiles = node.tiles;
+                                    renderTiles(target);
+                                    stepsDiv.textContent += `Крок ${step}: ${node.tiles.join(" ")}\n`;
+                                    step++;
+                                    setTimeout(processStep, interval);
+                                } else {
+                                    timeDiv.textContent = `Час виконання: ${timeTaken.toFixed(2)} мс`;
+                                    nodesDiv.textContent = `Загальна кількість вузлів: ${nodesVisited}`;
+
+                                    if (this.solutionSteps.length > 0) {
+                                        const content = this.solutionSteps.join("\n");
+                                        const blob = new Blob([content], { type: "text/plain" });
+                                        const downloadLink = document.createElement("a");
+                                        downloadLink.download = `solution_A*.txt`;
+                                        const url = URL.createObjectURL(blob);
+                                        downloadLink.href = url;
+                                        downloadLink.className = "download-btn";
+                                        downloadLink.textContent = "Download solution";
+                                        document.querySelector(".view-screen").appendChild(downloadLink);
+                                    }
+                                }
+                            };
+
+                            processStep();
+                            return;
+                        }
+
+                        const currentKey = currentNode.tiles.toString();
+                        if (closedSet.has(currentKey)) {
+                            processNextStep();
+                            return;
+                        }
+                        closedSet.add(currentKey);
+
+                        const children = currentNode.generateChildren();
+                        children.forEach((child) => {
+                            if (!closedSet.has(child.tiles.toString())) {
+                                queue.queue(child);
+                            }
+                        });
+
+                        setTimeout(processNextStep, 0);
+                    };
+
+                    processNextStep();
+                }
+            }
+
+            class RBFS {
+                constructor() {
+                    this.maxDepth = 50;
+                    this.nodesExplored = [];
+                    this.solutionSteps = [];
+                }
+
+                async search(node, limit) {
+                    const stepsDiv = document.querySelector(".solution-steps");
+                    const timeDiv = document.querySelector(".solution-time");
+                    const nodesDiv = document.querySelector(".solution-nodes");
+                    const target = document.querySelector(".eight-puzzle");
+
+                    const startTime = performance.now();
+                    const [solution, f_value] = await this.recursiveBestFirstSearch(node, limit);
+
+                    for (let i = 0; i < solution.getPath().length; i++) {
+                        const step = solution.getPath()[i];
+                        this.solutionSteps.push(`Крок ${i + 1}: ${step.tiles.join(" ")}`);
+                        stepsDiv.textContent += `Крок ${i + 1}: ${step.tiles.join(" ")}\n`;
+
+                        tiles = step.tiles;
+                        renderTiles(target);
+
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+
+                    const endTime = performance.now();
+                    const timeTaken = endTime - startTime;
+                    const nodesVisited = this.nodesExplored.length;
+
+                    timeDiv.textContent = `Час виконання: ${timeTaken.toFixed(2)} мс`;
+                    nodesDiv.textContent = `Загальна кількість вузлів: ${nodesVisited}`;
+
+                    if (this.solutionSteps.length > 0) {
+                        const content = this.solutionSteps.join("\n");
+                        const blob = new Blob([content], { type: "text/plain" });
+                        const downloadLink = document.createElement("a");
+                        downloadLink.download = `solution_RBFS.txt`;
+                        const url = URL.createObjectURL(blob);
+                        downloadLink.href = url;
+                        downloadLink.className = "download-btn";
+                        downloadLink.textContent = "Download solution";
+                        document.querySelector(".view-screen").appendChild(downloadLink);
+                    }
+
+                    console.log(`Усього вузлів: ${nodesVisited}`);
+                    console.log(`Час виконання: ${timeTaken} мілісекундах`);
+
+                    return [solution, f_value];
+                }
+
+                async recursiveBestFirstSearch(node, f_limit, depth = 0) {
+                    if (depth > this.maxDepth) {
+                        return [null, Infinity];
+                    }
+
+                    this.nodesExplored.push(node.tiles.toString());
+
+                    if (node.isGoal()) {
+                        return [node, f_limit];
+                    }
+
+                    const successors = node.generateChildren();
+
+                    if (successors.length === 0) {
+                        return [null, Infinity];
+                    }
+
+                    for (const child of successors) {
+                        child.f = Math.max(child.g + child.h, node.f);
+                    }
+
+                    while (true) {
+                        successors.sort((a, b) => a.f - b.f);
+                        const best = successors[0];
+
+                        if (best.f > f_limit) {
+                            return [null, best.f];
+                        }
+
+                        const alternative =
+                            successors.length > 1 ? successors[1].f : Infinity;
+                        const [result, best_f] = await this.recursiveBestFirstSearch(
+                            best,
+                            Math.min(f_limit, alternative),
+                            depth + 1
+                        );
+
+                        best.f = best_f;
+
+                        if (result !== null) {
+                            return [result, best_f];
+                        }
+                    }
+
+                    return [null, Infinity];
+                }
+            }
+
+            var renderTiles = function (newTarget) {
+                var ul = document.createElement("ul");
+                ul.className = "n-puzzle";
+
+                tiles.forEach(function (tile, index) {
+                    var correct = index + 1 == tile;
+                    var cssClass = tile == 0 ? "empty" : correct ? "correct" : "incorrect";
+
+                    var li = document.createElement("li");
+                    li.className = cssClass;
+                    li.setAttribute("data-tile", tile);
+                    li.textContent = tile;
+                    ul.appendChild(li);
+                });
+
+                newTarget.innerHTML = "";
+                newTarget.appendChild(ul);
+            };
+
+            populateTiles();
+
+            var target = document.querySelector(".eight-puzzle");
+            if (!target) {
+                console.error("Цільовий контейнер для пазла не знайдено!");
+                return;
+            }
+
+            renderTiles(target);
+
+            populateTiles();
+            var target = document.querySelector(".eight-puzzle");
+            if (!target) {
+                console.error("Цільовий контейнер для пазла не знайдено!");
+                return;
+            }
+
+            var renderTiles = function (newTarget) {
+                var ul = newTarget.querySelector("ul");
+                if (!ul) {
+                    ul = document.createElement("ul");
+                    ul.className = "n-puzzle";
+                    newTarget.appendChild(ul);
+                }
+                ul.innerHTML = "";
+
+                tiles.forEach(function (tile, index) {
+                    var correct = index + 1 == tile;
+                    var cssClass =
+                        tile == 0 ? "empty" : correct ? "correct" : "incorrect";
+
+                    var li = document.createElement("li");
+                    li.className = cssClass;
+                    li.setAttribute("data-tile", tile);
+                    li.textContent = tile;
+                    ul.appendChild(li);
+                });
+            };
+
+            renderTiles(target);
+
+            function animateSolution(path, interval, algorithmName) {
+                const stepsDiv = document.querySelector(".solution-steps");
+                if (!stepsDiv) {
+                    console.error("Элемент для отображения шагов не найден!");
+                    return;
+                }
+
+                let step = 0;
+                let solutionSteps = [];
+
+                function stepForward() {
+                    if (step < path.length) {
+                        const currentNode = path[step];
+                        tiles = currentNode.tiles;
+                        solutionSteps.push(`Крок ${step}: ${tiles.join(" ")}`);
+
+                        if (target) {
+                            renderTiles(target);
+                        } else {
+                            console.error("Цільовий елемент не визначено");
+                        }
+
+                        stepsDiv.textContent = solutionSteps.join("\n");
+                        step++;
+                        setTimeout(stepForward, interval);
+                    } else {
+                        if (solutionSteps.length > 0) {
+                            const content = solutionSteps.join("\n");
+                            const blob = new Blob([content], { type: "text/plain" });
+                            const downloadLink = document.createElement("a");
+                            downloadLink.download = `solution_${algorithmName}.txt`;
+                            const url = URL.createObjectURL(blob);
+                            downloadLink.href = url;
+                            downloadLink.className = "download-btn";
+                            downloadLink.textContent = "Download solution";
+                            document
+                                .querySelector(".view-screen")
+                                .appendChild(downloadLink);
+                        }
+                    }
+                }
+
+                stepForward();
+            }
+
+            function resetBeforeAlgorithm() {
+                tiles = [...initialTiles];
+                renderTiles(target);
+                const stepsDiv = document.querySelector(".solution-steps");
+                if (stepsDiv) {
+                    stepsDiv.textContent = "";
+                }
+                const downloadLinks = document.querySelectorAll("a.download-btn");
+                downloadLinks.forEach((link) => link.remove());
+            }
+
+            function generateSolvableTiles() {
+                let tiles;
+
+                do {
+                    tiles = [...Array(9).keys()];
+                    tiles.sort(() => Math.random() - 0.5);
+                } while (!isSolvable(tiles));
+
+                return tiles;
+            }
+
+            document
+                .getElementById("random-button")
+                .addEventListener("click", function () {
+                    tiles = generateSolvableTiles();
+                    initialTiles = [...tiles];
+                    renderTiles(target);
+                });
+
+            document
+                .getElementById("a-star-button")
+                .addEventListener("click", async function () {
+                    resetBeforeAlgorithm();
+                    if (!isSolvable(tiles)) {
+                        alert(
+                            "Цей пазл не вирішується. Будь ласка, введіть новий набір чисел."
+                        );
+                        populateTiles();
+                        return;
+                    }
+                    const aStarInstance = new AStar();
+                    await aStarInstance.search(tiles);
+                });
+
+            document
+                .getElementById("rbfs-button")
+                .addEventListener("click", async function () {
+                    resetBeforeAlgorithm();
+                    if (!isSolvable(tiles)) {
+                        alert(
+                            "Цей пазл не вирішується. Будь ласка, введіть новий набір чисел."
+                        );
+                        populateTiles();
+                        return;
+                    }
+
+                    const startNode = new Node(tiles);
+                    const rbfsInstance = new RBFS();
+                    const [solution, limit] = await rbfsInstance.search(startNode, Infinity);
+
+                    if (solution) {
+                        console.log("Рішення знайдено!");
+                        animateSolution(solutionPath, 1000, "Рішення RBFS");
+                    } else {
+                        console.log("Рішення не знайдено");
+                    }
+                });
+        };
+    </script>
+
+</body>
+
+</html>
